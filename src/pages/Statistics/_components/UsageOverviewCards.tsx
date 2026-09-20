@@ -36,7 +36,7 @@ function YesterdayBadge({ pct }: { pct: number }) {
 function HeroCard({ children }: { children: ReactNode }) {
   return (
     <Card className="gap-0 py-0">
-      <CardContent className="flex h-full min-h-[8.5rem] flex-col gap-3 px-5 py-5">
+      <CardContent className="flex h-full min-h-[7rem] flex-col gap-3 px-5 py-5">
         {children}
       </CardContent>
     </Card>
@@ -95,7 +95,7 @@ export function UsageOverviewCards({
         <HeroCard>
           <span className="text-sm text-ink-secondary">真实消耗 Tokens</span>
           <span title={consumed.toLocaleString()}>
-            <TabularText className="text-5xl font-light tracking-tight text-foreground">
+            <TabularText className="text-3xl font-light tracking-tight text-foreground">
               {formatTokenMetric(consumed)}
             </TabularText>
           </span>
@@ -104,7 +104,7 @@ export function UsageOverviewCards({
         <HeroCard>
           <span className="text-sm text-ink-secondary">缓存命中率</span>
           <span title="命中 / (净输入 + 命中 + 写入)">
-            <TabularText className="text-5xl font-light tracking-tight text-foreground">
+            <TabularText className="text-3xl font-light tracking-tight text-foreground">
               {formatCacheHitPercent(rate)}
             </TabularText>
           </span>
