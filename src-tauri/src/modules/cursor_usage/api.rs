@@ -144,6 +144,24 @@ pub async fn usage_summary(client: &Client, token: &str) -> HttpJson {
     .await
 }
 
+/// POST /api/dashboard/get-aggregated-usage-events；`startDate` 为计费周期开始毫秒。
+pub async fn aggregated_usage_events(client: &Client, token: &str, start_date_ms: i64) -> HttpJson {
+    let Some(h) = cookie_headers(token) else {
+        return HttpJson {
+            status: None,
+            body: json!({ "_error": "无法构造会话 Cookie（JWT 缺少 sub）" }),
+        };
+    };
+    send_json(
+        client,
+        reqwest::Method::POST,
+        &format!("{WEB_BASE}/api/dashboard/get-aggregated-usage-events"),
+        h,
+        Some(json!({ "teamId": -1, "startDate": start_date_ms })),
+    )
+    .await
+}
+
 pub async fn dashboard_period(client: &Client, token: &str) -> HttpJson {
     let Some(h) = cookie_headers(token) else {
         return HttpJson {

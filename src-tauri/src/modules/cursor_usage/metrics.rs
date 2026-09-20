@@ -7,7 +7,8 @@ use serde_json::Value;
 
 use crate::models::cursor_usage::{
     CursorCategory, CursorDailyPoint, CursorHourlyModel, CursorHourlyPoint, CursorMetrics,
-    CursorModelRow, CursorPeriod, CursorPlanUsage, CursorRecentRow, CursorUsageEventRow,
+    CursorModelRow, CursorPeriod, CursorPlanUsage, CursorRecentRow, CursorUsageAggregation,
+    CursorUsageEventRow,
 };
 
 pub const DAY_MS: i64 = 86_400_000;
@@ -74,10 +75,7 @@ pub fn is_auto_model(model: &str, auto_bucket: &[String]) -> bool {
     }
     // ponytail: Cursor 官方将 cursor-grok-* 系列归入 "Cursor Models"（即 Auto + Composer 桶），
     // 但 autoBucketModels 仅返回基础名、事件模型名带 -xhigh-fast 等后缀，精确匹配不命中，故加前缀规则。
-    m == "auto"
-        || m == "default"
-        || m.starts_with("composer")
-        || m.starts_with("cursor-grok")
+    m == "auto" || m == "default" || m.starts_with("composer") || m.starts_with("cursor-grok")
 }
 
 pub fn normalize_period(raw: &Value) -> CursorPeriod {
@@ -493,6 +491,39 @@ pub fn row_to_event(r: &CursorUsageEventRow) -> UsageEvent {
     }
 }
 
+fn json_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Array(a)) => !a.is_empty(),
+        Some(Value::Object(_)) => true,
+    }
+}
+
+/// 从 get-aggregated-usage-events 抽出有 modelIntent 且 tier∈{1,2} 的行。
+pub fn parse_aggregations(body: &Value) -> Vec<CursorUsageAggregation> {
+    let Some(arr) = body.get("aggregations").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|x| {
+            if !json_truthy(x.get("modelIntent")) {
+                return None;
+            }
+            let tier = json_i64(x.get("tier").unwrap_or(&Value::Null)) as i32;
+            if tier != 1 && tier != 2 {
+                return None;
+            }
+            Some(CursorUsageAggregation {
+                tier,
+                total_cents: json_f64(x.get("totalCents").unwrap_or(&Value::Null)),
+            })
+        })
+        .collect()
+}
+
 pub fn parse_usage_event(raw: &Value) -> Option<UsageEvent> {
     let ts = event_ms(json_i64(raw.get("timestamp")?));
     if ts <= 0 {
@@ -623,5 +654,35 @@ mod tests {
         assert_eq!(cats[0].id, "api");
         assert_eq!(cats[0].models[0].model, "claude-4");
         assert_eq!(cats[1].id, "auto_composer");
+    }
+
+    #[test]
+    fn parse_aggregations_keeps_intent_tier_1_and_2() {
+        let body = json!({
+            "aggregations": [
+                { "modelIntent": "chat", "tier": 2, "totalCents": 410 },
+                { "modelIntent": "chat", "tier": 2, "totalCents": 90 },
+                { "modelIntent": "composer", "tier": 1, "totalCents": 2000 },
+                { "modelIntent": "", "tier": 2, "totalCents": 999 },
+                { "tier": 2, "totalCents": 888 },
+                { "modelIntent": "chat", "tier": 3, "totalCents": 777 }
+            ]
+        });
+        let rows = parse_aggregations(&body);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            rows.iter()
+                .filter(|r| r.tier == 2)
+                .map(|r| r.total_cents)
+                .sum::<f64>(),
+            500.0
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|r| r.tier == 1)
+                .map(|r| r.total_cents)
+                .sum::<f64>(),
+            2000.0
+        );
     }
 }

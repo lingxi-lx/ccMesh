@@ -140,7 +140,10 @@ export function CursorUsagePanel({
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <ChannelDonut planUsage={snapshot.period.planUsage} />
+        <ChannelDonut
+          planUsage={snapshot.period.planUsage}
+          aggregations={snapshot.channelAggregations}
+        />
         <div className="col-span-2">
           <ModelTopBar categories={snapshot.categories} />
         </div>

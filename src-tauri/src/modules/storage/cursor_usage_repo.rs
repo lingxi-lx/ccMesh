@@ -171,7 +171,8 @@ mod tests {
         let n = purge_old_events(&c, 5_000_000).unwrap();
         assert_eq!(n, 1);
         assert_eq!(
-            c.query_row("SELECT COUNT(*) FROM cursor_usage_events", [], |r| r.get::<_, i64>(0))
+            c.query_row("SELECT COUNT(*) FROM cursor_usage_events", [], |r| r
+                .get::<_, i64>(0))
                 .unwrap(),
             1
         );

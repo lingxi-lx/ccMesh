@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   effortLevel,
+  estimateChannelUsage,
   fmtTok,
   fmtUsd,
   hourlyStackSeries,
@@ -77,5 +78,41 @@ describe("hourlyStackSeries", () => {
     expect(keys).toContain("其他");
     expect(keys).toContain("m1");
     expect(Number(rows[0]["其他"])).toBe(5);
+  });
+});
+
+describe("estimateChannelUsage", () => {
+  const rows = [
+    { tier: 2, totalCents: 410 },
+    { tier: 2, totalCents: 90 },
+    { tier: 1, totalCents: 2000 },
+  ];
+
+  it("按 tier 汇总，并用 Auto 占用比反推预估总额", () => {
+    const est = estimateChannelUsage(rows, {
+      autoPercentUsed: 40,
+      apiPercentUsed: 28.57,
+      limit: 7000,
+    });
+    expect(est).toEqual({
+      firstUsedCents: 500,
+      firstTotalCents: 1250,
+      otherUsedCents: 2000,
+      guaranteedCents: 7000,
+    });
+  });
+
+  it("占用比为 0 或 100 时预估总额为 N/A", () => {
+    expect(
+      estimateChannelUsage(rows, { autoPercentUsed: 0, limit: 7000 })?.firstTotalCents,
+    ).toBeNull();
+    expect(
+      estimateChannelUsage(rows, { autoPercentUsed: 100, limit: 7000 })?.firstTotalCents,
+    ).toBeNull();
+  });
+
+  it("无聚合数据时不估算", () => {
+    expect(estimateChannelUsage(null, { limit: 7000 })).toBeNull();
+    expect(estimateChannelUsage(undefined, { limit: 7000 })).toBeNull();
   });
 });

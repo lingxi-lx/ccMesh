@@ -1,6 +1,8 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { TabularText } from "@/components/ui";
-import type { CursorPlanUsage } from "@/services/modules/cursorUsage";
+import { Card, CardContent } from "@/components/ui/card";
+import type { CursorPlanUsage, CursorUsageAggregation } from "@/services/modules/cursorUsage";
+
+import { estimateChannelUsage, fmtUsd } from "./cursorUsage";
 
 /** 进度条颜色：>=100% 红、>80% 橙、否则用通道主色。 */
 function barClass(pct: number, normal: string) {
@@ -9,36 +11,84 @@ function barClass(pct: number, normal: string) {
   return normal;
 }
 
-export function ChannelDonut({ planUsage }: { planUsage: CursorPlanUsage }) {
+function ChannelRow({
+  name,
+  pct,
+  normal,
+  usedCents,
+  extraLabel,
+  extraCents,
+}: {
+  name: string;
+  pct: number;
+  normal: string;
+  usedCents?: number;
+  extraLabel?: string;
+  extraCents?: number | null;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-ink-primary">{name}</span>
+        <TabularText className="text-sm text-ink-secondary">{pct.toFixed(1)}%</TabularText>
+      </div>
+      <div className="relative h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`absolute inset-y-0 left-0 rounded-full ${barClass(pct, normal)}`}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+      {usedCents != null ? (
+        <div className="flex items-baseline justify-between gap-2 text-xs text-ink-mute">
+          <span>
+            已用{" "}
+            <TabularText className="text-ink-secondary">{fmtUsd(usedCents)}</TabularText>
+          </span>
+          {extraLabel ? (
+            <span>
+              {extraLabel}{" "}
+              <TabularText className="text-ink-secondary">
+                {extraCents == null ? "—" : fmtUsd(extraCents)}
+              </TabularText>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ChannelDonut({
+  planUsage,
+  aggregations,
+}: {
+  planUsage: CursorPlanUsage;
+  aggregations?: CursorUsageAggregation[] | null;
+}) {
   const api = planUsage.apiPercentUsed ?? 0;
   const auto = planUsage.autoPercentUsed ?? 0;
-  const rows = [
-    { name: "Auto + Composer", pct: auto, normal: "bg-info" },
-    { name: "API 通道", pct: api, normal: "bg-primary" },
-  ];
+  const est = estimateChannelUsage(aggregations, planUsage);
   return (
-    <Card className="h-full py-4">
+    <Card className="h-full gap-0 py-4">
       <CardContent className="flex h-full flex-col justify-center px-4">
-        <h3 className="mb-4 text-xs text-ink-secondary">通道用量进度</h3>
-        <div className="flex flex-col gap-5">
-          {rows.map((r) => (
-            <div key={r.name} className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-ink-primary">
-                  {r.name}
-                </span>
-                <TabularText className="text-sm text-ink-secondary">
-                  {r.pct.toFixed(1)}% used
-                </TabularText>
-              </div>
-              <div className="relative h-2.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={`absolute inset-y-0 left-0 rounded-full ${barClass(r.pct, r.normal)}`}
-                  style={{ width: `${Math.min(100, r.pct)}%` }}
-                />
-              </div>
-            </div>
-          ))}
+        <h3 className="mb-3 text-xs text-ink-secondary">通道用量进度</h3>
+        <div className="flex flex-col gap-4">
+          <ChannelRow
+            name="Auto + Composer"
+            pct={auto}
+            normal="bg-info"
+            usedCents={est?.firstUsedCents}
+            extraLabel="预估"
+            extraCents={est?.firstTotalCents}
+          />
+          <ChannelRow
+            name="API 通道"
+            pct={api}
+            normal="bg-primary"
+            usedCents={est?.otherUsedCents}
+            extraLabel="保底"
+            extraCents={est?.guaranteedCents}
+          />
         </div>
       </CardContent>
     </Card>

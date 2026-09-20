@@ -12,6 +12,30 @@ export function fmtUsd(cents: number | undefined | null): string {
   );
 }
 
+/** Auto=tier2 / API=tier1。autoPct∈(0,100) 时用已用反推 Auto 预估总额，否则 N/A。 */
+export function estimateChannelUsage(
+  aggregations: { tier: number; totalCents: number }[] | null | undefined,
+  plan: { autoPercentUsed?: number; apiPercentUsed?: number; limit: number },
+): {
+  firstUsedCents: number;
+  firstTotalCents: number | null;
+  otherUsedCents: number;
+  guaranteedCents: number;
+} | null {
+  if (!aggregations) return null;
+  const n = (v: unknown) => Number(v || 0);
+  const sum = (tier: number) =>
+    aggregations.filter((x) => x.tier === tier).reduce((a, x) => a + n(x.totalCents), 0);
+  const firstUsedCents = sum(2);
+  const autoPct = n(plan.autoPercentUsed);
+  return {
+    firstUsedCents,
+    otherUsedCents: sum(1),
+    guaranteedCents: n(plan.limit),
+    firstTotalCents: autoPct > 0 && autoPct < 100 ? (firstUsedCents * 100) / autoPct : null,
+  };
+}
+
 export function fmtTok(n: number | undefined | null): string {
   return formatTokenMetric(Number(n ?? 0));
 }

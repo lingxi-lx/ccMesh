@@ -26,6 +26,11 @@ export interface CursorPlanUsage {
   autoPercentUsed?: number;
 }
 
+export interface CursorUsageAggregation {
+  tier: number;
+  totalCents: number;
+}
+
 export interface CursorPeriod {
   cycleStartMs: number;
   cycleEndMs: number;
@@ -109,6 +114,7 @@ export interface CursorUsageSnapshot {
   recent: CursorRecentRow[];
   interfaces: Record<string, InterfaceStatus>;
   warnings: string[];
+  channelAggregations?: CursorUsageAggregation[] | null;
 }
 
 export const cursorUsageApi = {

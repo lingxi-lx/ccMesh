@@ -54,11 +54,16 @@ pub async fn refresh(pool: DbPool) -> AppResult<CursorUsageSnapshot> {
     }
 
     let token = tokens.access_token.clone();
-    let (period_r, plan_r, dash_r) = tokio::join!(
+    let (period_r, plan_r, dash_r, summary_r) = tokio::join!(
         api::get_current_period_usage(&client, &token),
         api::get_plan_info(&client, &token),
         api::dashboard_period(&client, &token),
+        api::usage_summary(&client, &token),
     );
+
+    let summary_ok = summary_r.status == Some(200)
+        && (summary_r.body.get("individualUsage").is_some()
+            || summary_r.body.get("planUsage").is_some());
 
     let mut interfaces = HashMap::new();
     let mut period = if period_r.status == Some(200) && period_r.body.get("planUsage").is_some() {
@@ -82,26 +87,24 @@ pub async fn refresh(pool: DbPool) -> AppResult<CursorUsageSnapshot> {
                 ..Default::default()
             },
         );
-        let fb = api::usage_summary(&client, &token).await;
-        if fb.status == Some(200)
-            && (fb.body.get("individualUsage").is_some() || fb.body.get("planUsage").is_some())
-        {
+        if summary_ok {
             interfaces.insert(
-                "usage-summary(fallback)".into(),
+                "usage-summary".into(),
                 InterfaceStatus {
                     ok: true,
-                    status: fb.status,
+                    status: summary_r.status,
                     ..Default::default()
                 },
             );
-            metrics::normalize_summary(&fb.body)
+            metrics::normalize_summary(&summary_r.body)
         } else {
-            let err2 = api::http_error_msg(&fb.body).unwrap_or_else(|| "兜底接口失败".into());
+            let err2 =
+                api::http_error_msg(&summary_r.body).unwrap_or_else(|| "兜底接口失败".into());
             interfaces.insert(
-                "usage-summary(fallback)".into(),
+                "usage-summary".into(),
                 InterfaceStatus {
                     ok: false,
-                    status: fb.status,
+                    status: summary_r.status,
                     error: Some(err2.clone()),
                     ..Default::default()
                 },
@@ -111,6 +114,25 @@ pub async fn refresh(pool: DbPool) -> AppResult<CursorUsageSnapshot> {
             )));
         }
     };
+
+    if summary_ok {
+        interfaces
+            .entry("usage-summary".into())
+            .or_insert(InterfaceStatus {
+                ok: true,
+                status: summary_r.status,
+                ..Default::default()
+            });
+    } else {
+        interfaces
+            .entry("usage-summary".into())
+            .or_insert(InterfaceStatus {
+                ok: false,
+                status: summary_r.status,
+                error: api::http_error_msg(&summary_r.body),
+                ..Default::default()
+            });
+    }
 
     let mut plan = CursorPlanInfo {
         plan_name: "Unknown".into(),
@@ -193,6 +215,19 @@ pub async fn refresh(pool: DbPool) -> AppResult<CursorUsageSnapshot> {
         );
     }
 
+    if summary_ok {
+        let s = metrics::normalize_summary(&summary_r.body);
+        if s.plan_usage.auto_percent_used.is_some() {
+            period.plan_usage.auto_percent_used = s.plan_usage.auto_percent_used;
+        }
+        if s.plan_usage.api_percent_used.is_some() {
+            period.plan_usage.api_percent_used = s.plan_usage.api_percent_used;
+        }
+        if period.plan_usage.limit <= 0 && s.plan_usage.limit > 0 {
+            period.plan_usage.limit = s.plan_usage.limit;
+        }
+    }
+
     if let Some(mt) = period_r
         .body
         .get("membershipType")
@@ -215,9 +250,37 @@ pub async fn refresh(pool: DbPool) -> AppResult<CursorUsageSnapshot> {
     }
     .max(0);
 
-    let (new_events, ev_status, _) =
-        api::fetch_usage_events(&client, &token, event_start, cycle_end.max(now_ms)).await;
+    let (events_out, agg_r) = tokio::join!(
+        api::fetch_usage_events(&client, &token, event_start, cycle_end.max(now_ms)),
+        api::aggregated_usage_events(&client, &token, cycle_start),
+    );
+    let (new_events, ev_status, _) = events_out;
     interfaces.insert("get-filtered-usage-events".into(), ev_status);
+
+    let (channel_aggregations, agg_status) = if agg_r.status == Some(200) {
+        let rows = metrics::parse_aggregations(&agg_r.body);
+        let n = rows.len() as i64;
+        (
+            Some(rows),
+            InterfaceStatus {
+                ok: true,
+                status: agg_r.status,
+                count: Some(n),
+                ..Default::default()
+            },
+        )
+    } else {
+        (
+            None,
+            InterfaceStatus {
+                ok: false,
+                status: agg_r.status,
+                error: api::http_error_msg(&agg_r.body),
+                ..Default::default()
+            },
+        )
+    };
+    interfaces.insert("get-aggregated-usage-events".into(), agg_status);
 
     let rows: Vec<_> = new_events.iter().map(metrics::event_to_row).collect();
     let period_for_db = period.clone();
@@ -260,6 +323,7 @@ pub async fn refresh(pool: DbPool) -> AppResult<CursorUsageSnapshot> {
             recent: metrics::recent_requests(&events, now, 100),
             interfaces: interfaces_for_db,
             warnings: warnings_for_db,
+            channel_aggregations,
         };
         cursor_usage_repo::save_snapshot(&conn, &snap)?;
         // 保留最近 90 天事件（覆盖 3 个月度计费周期），清理更早的无用历史

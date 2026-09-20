@@ -18,6 +18,16 @@ pub struct CursorUsageSnapshot {
     pub recent: Vec<CursorRecentRow>,
     pub interfaces: HashMap<String, InterfaceStatus>,
     pub warnings: Vec<String>,
+    /// 本周期聚合用量（tier 1=API / 2=Auto），来自 get-aggregated-usage-events。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_aggregations: Option<Vec<CursorUsageAggregation>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorUsageAggregation {
+    pub tier: i32,
+    pub total_cents: f64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
