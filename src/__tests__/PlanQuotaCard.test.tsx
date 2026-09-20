@@ -42,17 +42,28 @@ const metrics: CursorMetrics = {
 };
 
 describe("PlanQuotaCard", () => {
-  it("总消耗下方展示本周期 Token，按亿缩写", () => {
+  it("左侧总消耗、右侧总 Token，额外赠送只出现在说明图标", () => {
     render(
       <PlanQuotaCard plan={plan} period={period} metrics={metrics} cycleTokens={200_000_000} />,
     );
     expect(screen.getByText("总消耗")).toBeInTheDocument();
     expect(screen.getByText("总Token消耗")).toBeInTheDocument();
+    expect(screen.getByText("$893.17")).toBeInTheDocument();
     expect(screen.getByText("2.0亿")).toBeInTheDocument();
+    expect(screen.queryByText("$823.17")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "free用量$823.17" })).toBeInTheDocument();
   });
 
-  it("不足万时展示原值", () => {
-    render(<PlanQuotaCard plan={plan} period={period} metrics={metrics} cycleTokens={123} />);
+  it("无额外赠送时不展示说明图标", () => {
+    render(
+      <PlanQuotaCard
+        plan={plan}
+        period={period}
+        metrics={{ ...metrics, cycleBonusCents: 0 }}
+        cycleTokens={123}
+      />,
+    );
     expect(screen.getByText("123")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /free用量/ })).not.toBeInTheDocument();
   });
 });

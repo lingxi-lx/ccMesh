@@ -1,8 +1,9 @@
-import { MinusIcon } from "lucide-react";
+import { InfoIcon, MinusIcon } from "lucide-react";
 
 import { TabularText } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { CursorMetrics, CursorPlanInfo, CursorPeriod } from "@/services/modules/cursorUsage";
 
 import { fmtCycleDay, fmtTok, fmtUsd } from "./cursorUsage";
@@ -21,6 +22,7 @@ export function PlanQuotaCard({
   const used = metrics.quotaUsedPct;
   const barColor =
     used >= 100 ? "bg-destructive" : used > 80 ? "bg-warning" : "bg-primary";
+  const bonusHint = `free用量${fmtUsd(metrics.cycleBonusCents)}`;
   return (
     <Card className="col-span-2 h-full gap-0 py-3">
       <CardContent className="flex h-full flex-col gap-2 px-5">
@@ -49,18 +51,30 @@ export function PlanQuotaCard({
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div title="套餐额度用完后，Cursor 额外给的免费用量（bonusSpend）">
-            <p className="text-xs text-ink-mute">额外赠送</p>
-            <TabularText className="text-lg text-foreground">
-              {fmtUsd(metrics.cycleBonusCents)}
-            </TabularText>
-          </div>
-          <div className="border-l border-edge pl-4">
-            <p className="text-xs text-ink-mute">总消耗</p>
+          <div>
+            <p className="flex items-center gap-1 text-xs text-ink-mute">
+              总消耗
+              {metrics.cycleBonusCents > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-ink-disabled transition-colors hover:text-ink-secondary"
+                      aria-label={bonusHint}
+                    >
+                      <InfoIcon className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{bonusHint}</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </p>
             <TabularText className="text-lg text-foreground">
               {fmtUsd(metrics.cycleSpendCents)}
             </TabularText>
-            <p className="mt-2 text-xs text-ink-mute">总Token消耗</p>
+          </div>
+          <div className="border-l border-edge pl-4">
+            <p className="text-xs text-ink-mute">总Token消耗</p>
             <div title={`${Number(cycleTokens || 0).toLocaleString()} Token`}>
               <TabularText className="text-lg text-foreground">{fmtTok(cycleTokens)}</TabularText>
             </div>
